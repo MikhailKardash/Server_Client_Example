@@ -2,6 +2,7 @@ import numpy as np
 import asyncio
 from av import VideoFrame
 import cv2
+import datetime
 
 from aiortc import (
     RTCIceCandidate,
@@ -22,54 +23,51 @@ class FlagVideoStreamTrack(VideoStreamTrack):
         super().__init__()  # don't forget this!
         self.counter = 0
         height, width = 480, 640
+        radius = 50
 
-        # generate flag
-        data_bgr = np.hstack(
-            [
-                self._create_rectangle(
-                    width=213, height=480, color=(255, 0, 0)
-                ),  # blue
-                self._create_rectangle(
-                    width=214, height=480, color=(255, 255, 255)
-                ),  # white
-                self._create_rectangle(width=213, height=480, color=(0, 0, 255)),  # red
-            ]
-        )
-
-        # shrink and center it
-        M = np.float32([[0.5, 0, width / 4], [0, 0.5, height / 4]])
-        data_bgr = cv2.warpAffine(data_bgr, M, (width, height))
-
-        # compute animation
-        omega = 2 * np.pi / height
-        id_x = np.tile(np.array(range(width), dtype=np.float32), (height, 1))
-        id_y = np.tile(
-            np.array(range(height), dtype=np.float32), (width, 1)
-        ).transpose()
+        # generate circle
+        data_bgr = self._create_circle(radius, (255,0,255)).astype(np.float32)
+        
+        # generate background
+        background = np.zeros((height, width, 3))
 
         self.frames = []
         for k in range(30):
-            phase = 2 * k * np.pi / 30
-            map_x = id_x + 10 * np.cos(omega * id_x + phase)
-            map_y = id_y + 10 * np.sin(omega * id_x + phase)
+            map_x = radius + 5 + 10 * k
+            map_y = radius + 5 + 10 * k
+            temp = background
+            temp[map_y-radius:map_y+radius+1,map_x-radius:map_x+radius+1,:] = data_bgr
             self.frames.append(
                 VideoFrame.from_ndarray(
-                    cv2.remap(data_bgr, map_x, map_y, cv2.INTER_LINEAR), format="bgr24"
+                    temp.astype(np.uint8), format="bgr24"
+                )
+            )
+        for k in range(29,-1,-1):
+            map_x = radius + 5 + 10 * k
+            map_y = radius + 5 + 10 * k
+            temp = background
+            temp[map_y-radius:map_y+radius+1,map_x-radius:map_x+radius+1,:] = data_bgr
+            self.frames.append(
+                VideoFrame.from_ndarray(
+                    temp.astype(np.uint8), format="bgr24"
                 )
             )
             
     async def recv(self):
         pts, time_base = await self.next_timestamp()
 
-        frame = self.frames[self.counter % 30]
+        frame = self.frames[self.counter % 60]
         frame.pts = pts
         frame.time_base = time_base
         self.counter += 1
         return frame
-
-    def _create_rectangle(self, width, height, color):
-        data_bgr = np.zeros((height, width, 3), np.uint8)
-        data_bgr[:, :] = color
+        
+    def _create_circle(self, radius, color):
+        data_bgr = np.zeros((radius*2+1, radius*2+1, 3), np.uint8)
+        cx, cy = radius + 1, radius + 1
+        y, x = np.ogrid[-radius:radius,-radius:radius]
+        index = x**2 + y**2 <= radius**2
+        data_bgr[cy-radius:cy+radius, cx-radius:cx+radius] = color
         return data_bgr
 
 
@@ -77,25 +75,20 @@ def channel_send(channel, message):
     channel.send(message)
 
 async def run_offer(pc, signaling):
-    ping_seen = False
+    
     def add_tracks():
         pc.addTrack(FlagVideoStreamTrack())
-    @pc.on("track")
-    def on_track(track):
-        print("Receiving %s" % track.kind)
-        recorder.addTrack(track)
-        async def on_ended():
-            await recorder.stop()
 
     await signaling.connect()
-    channel = pc.createDataChannel("chat")
+    
 
-
-    @channel.on("message")
-    def on_message(message):
-        if isinstance(message, str):
-            print("Message_Received")
-            # calculate error here.
+    @pc.on("datachannel")
+    def on_datachannel(channel):
+        @channel.on("message")
+        def on_message(message):
+            if isinstance(message, str):
+                print(message)
+                # calculate error here.
             
     # send offer  
     # add media player
@@ -110,9 +103,10 @@ async def run_offer(pc, signaling):
 
             if obj.type == "offer":
                 # send answer
-                add_tracks()
                 await pc.setLocalDescription(await pc.createAnswer())
                 await signaling.send(pc.localDescription)
+            else:
+                continue
         elif isinstance(obj, RTCIceCandidate):
             await pc.addIceCandidate(obj)
         elif obj is BYE:
