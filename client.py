@@ -1,4 +1,6 @@
 import numpy as np
+import asyncio
+import cv2
 
 from av import VideoFrame
 
@@ -12,7 +14,6 @@ from aiortc.contrib.media import MediaBlackhole, MediaPlayer, MediaRecorder
 from aiortc.contrib.signaling import BYE, add_signaling_arguments, TcpSocketSignaling
 
 def channel_send(channel, message):
-    channel_log(channel, ">", message)
     channel.send(message)
 
 async def consume_signaling(pc, signaling):
@@ -32,45 +33,56 @@ async def consume_signaling(pc, signaling):
             print("Exiting")
             break
 
-async def run_offer(pc, signaling):
+async def run_answer(pc, signaling, recorder, cap):
     await signaling.connect()
+    
+    @pc.on("track")
+    def on_track(track):
+        print("Receiving %s" % track.kind)
+        recorder.addTrack(track)
+    
+        
+    
+    @pc.on("datachannel")
+    def on_datachannel(channel):
 
-    channel = pc.createDataChannel("chat")
-    channel_log(channel, "-", "created by local party")
-
-    async def send_pings():
-        while True:
-            channel_send(channel, "ping %d" % current_stamp())
-            await asyncio.sleep(1)
-
-    @channel.on("open")
-    def on_open():
-        asyncio.ensure_future(send_pings())
-
-    @channel.on("message")
-    def on_message(message):
-        channel_log(channel, "<", message)
-
-        if isinstance(message, str) and message.startswith("pong"):
-            elapsed_ms = (current_stamp() - int(message[5:])) / 1000
-            print(" RTT %.2f ms" % elapsed_ms)
-
-    # send offer
-    await pc.setLocalDescription(await pc.createOffer())
-    await signaling.send(pc.localDescription)
-
+        @channel.on("message")
+        def on_message(message):
+            print(message)
+            if isinstance(message, str) and message.startswith("ping"):
+                # reply
+                channel_send(channel, "pong")
     await consume_signaling(pc, signaling)
-    
-    
 
 
 
 if __name__ == '__main__':
-    print("Starting Server")
+    print("Starting Client")
     
-    # create signaling object
-    signaling = TcpSocketSignaling()
+     # create signaling object
+    signaling = TcpSocketSignaling(host = "127.0.0.1", port = "8080")
     
     
     # create peer connection
     pc = RTCPeerConnection()
+    
+    # create recorder
+    recorder = MediaBlackhole()
+    
+    # create video capture object
+    cap = cv2.VideoCapture(0)
+    
+    # create event and run loop
+    event = run_answer(pc,signaling, recorder, cap)
+    loop = asyncio.get_event_loop()
+    
+    try:
+        loop.run_until_complete(event)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        loop.run_until_complete(recorder.stop())
+        loop.run_until_complete(signaling.close())
+        loop.run_until_complete(pc.close())
+        
+        

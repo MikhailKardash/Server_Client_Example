@@ -11,30 +11,8 @@ from aiortc import (
 )
 from aiortc.contrib.media import MediaBlackhole, MediaPlayer, MediaRecorder
 from aiortc.contrib.signaling import BYE, add_signaling_arguments, TcpSocketSignaling
-def channel_send(channel, message):
-    channel_log(channel, ">", message)
-    channel.send(message)
-    
-    
-    
-async def run_answer(pc, signaling):
-    await signaling.connect()
 
-    @pc.on("datachannel")
-    def on_datachannel(channel):
-        channel_log(channel, "-", "created by remote party")
 
-        @channel.on("message")
-        def on_message(message):
-            channel_log(channel, "<", message)
-
-            if isinstance(message, str) and message.startswith("ping"):
-                # reply
-                channel_send(channel, "pong" + message[4:])
-
-    await consume_signaling(pc, signaling)
-    
-    
 class FlagVideoStreamTrack(VideoStreamTrack):
     """
     A video track that returns an animated flag.
@@ -95,31 +73,40 @@ class FlagVideoStreamTrack(VideoStreamTrack):
         return data_bgr
 
 
-async def run(pc, recorder, signaling, role):
+def channel_send(channel, message):
+    channel.send(message)
+
+async def run_offer(pc, signaling):
+    ping_seen = False
     def add_tracks():
         pc.addTrack(FlagVideoStreamTrack())
-
     @pc.on("track")
     def on_track(track):
         print("Receiving %s" % track.kind)
         recorder.addTrack(track)
+        async def on_ended():
+            await recorder.stop()
 
-    # connect signaling
     await signaling.connect()
+    channel = pc.createDataChannel("chat")
 
-    if role == "offer":
-        # send offer
-        add_tracks()
-        await pc.setLocalDescription(await pc.createOffer())
-        await signaling.send(pc.localDescription)
 
-    # consume signaling
+    @channel.on("message")
+    def on_message(message):
+        if isinstance(message, str):
+            print("Message_Received")
+            # calculate error here.
+            
+    # send offer  
+    # add media player
+    add_tracks()
+    await pc.setLocalDescription(await pc.createOffer())
+    await signaling.send(pc.localDescription)
     while True:
         obj = await signaling.receive()
 
         if isinstance(obj, RTCSessionDescription):
             await pc.setRemoteDescription(obj)
-            await recorder.start()
 
             if obj.type == "offer":
                 # send answer
@@ -139,33 +126,19 @@ if __name__ == '__main__':
     print("Starting Server")
     
     # create signaling object
-    signaling = TcpSocketSignaling(host = "0.0.0.0", port = "8080")
+    signaling = TcpSocketSignaling(host = "127.0.0.1", port = "8080")
     
     
     # create peer connection
     pc = RTCPeerConnection()
     
-    # create recorder
-    recorder = MediaBlackhole()
-    
+    # create event and run loop
+    event = run_offer(pc,signaling)
     loop = asyncio.get_event_loop()
-    
     try:
-        loop.run_until_complete(
-            run(
-                pc=pc,
-                recorder=recorder,
-                signaling=signaling,
-                role='offer'
-                )
-            )
+        loop.run_until_complete(event)
     except KeyboardInterrupt:
         pass
     finally:
-        # cleanup
-        loop.run_until_complete(recorder.stop())
         loop.run_until_complete(signaling.close())
         loop.run_until_complete(pc.close())
-        
-    
-    
