@@ -112,6 +112,23 @@ async def run_offer(pc, signaling):
         to signal.
         """
         pc.addTrack(CircleVideoStreamTrack())
+    
+    def calc_coords(frame_count):
+        """
+        Calculate coordinates.
+        This is closed form since we know where every point
+        is in the video.
+        :param frame: video frame in numpy format.
+        """
+        radius = 50
+        k = frame_count
+        if k < 30:
+            k = k
+        else:
+            k = 59-k
+        map_x = radius + 5 + 10 * k
+        map_y = radius + 5 + 10 * k
+        return map_x , map_y
 
     await signaling.connect()
     
@@ -122,7 +139,6 @@ async def run_offer(pc, signaling):
         """
         while True:
             channel_send(channel, "ping")
-            print('ping')
             await asyncio.sleep(1)
 
     @channel.on("open")
@@ -142,17 +158,15 @@ async def run_offer(pc, signaling):
         and then calculate error.
         """
         if isinstance(message,str):
-            print(message)
             if message == 'pong':
                 pass
             else:
+                print('Coords Received: ' + message)
                 coords = message.split(',')
                 x = int(message[0])
                 y = int(message[1])
-                print(frame)
-                compx, compy = calc_coords(frame)
-                print(compx)
-                print(compy)
+                compx, compy = calc_coords(count)
+                print('Coords Server: ' + str(compx) + ',' + str(compy))
                 print('Error: ' + str(np.sqrt((x-compx)**2 + (y-compy)**2)))
                 
 
@@ -164,7 +178,10 @@ async def run_offer(pc, signaling):
     
     # keep connection open.
     while True:
-        frame = await reference.recv()
+        #advance frame with server tick.
+        _ = await reference.recv()
+        #get frame counter
+        count = reference.counter
         obj = await signaling.receive()
 
         if isinstance(obj, RTCSessionDescription):
@@ -182,20 +199,10 @@ async def run_offer(pc, signaling):
         elif obj is BYE:
             print("Exiting")
             break
+    
+    
 
-def calc_coords(frame):
-    """
-    Calculate coordinates.
-    Make sure that it is consistent with client side
-    processing method.
-    :param frame: video frame in numpy format.
-    """
-    frame = frame[10:480,10:640]
-    for y in range(frame.shape[0]):
-        for x in range(frame.shape[1]):
-            if frame[y,x] == 255:
-                return x,y
-    return 0,0
+    
 
 
 if __name__ == '__main__':

@@ -14,6 +14,10 @@ from aiortc import (
 from aiortc.contrib.media import MediaBlackhole, MediaPlayer, MediaRecorder
 from aiortc.contrib.signaling import BYE, add_signaling_arguments, TcpSocketSignaling
 
+processes = []
+rets = []
+
+
 def channel_send(channel, message):
     """
     Send message over specified channel.
@@ -30,8 +34,7 @@ async def run_answer(pc, signaling, recorder, queue, window):
     Track offer: play video
     Then, leaves the connection open.
     """
-    processes = []
-    rets = []
+
     await signaling.connect()
     @pc.on("track")
     async def on_track(track):
@@ -46,10 +49,10 @@ async def run_answer(pc, signaling, recorder, queue, window):
         while True:
             frame = await track.recv()
             frame = frame.to_ndarray()
-            process = multiprocessing.Process(target = calc_coords,
-                                              args = (queue,frame))
-            processes.append(process)
-            process.start()
+            if len(processes) < 3:
+                process = multiprocessing.Process(target = calc_coords, args = (queue,frame))
+                process.start()
+                processes.append(process)
             cv2.imshow(window,frame[10:480,10:640])
             cv2.waitKey(50)
     
@@ -62,22 +65,21 @@ async def run_answer(pc, signaling, recorder, queue, window):
         @channel.on("message")
         def on_message(message):
             if isinstance(message, str):
-                print(message)
-                for p in processes:
-                    ret = queue.get()
-                    rets.append(ret)
-                
-                for p in processes:
-                    p.join()
-                
+                if not rets:
+                    for p in processes:
+                        ret = queue.get()
+                        rets.append(ret)
+                    for p in processes:
+                        p.join()
                 if rets:
                     x,y = rets.pop(0)
+                    processes.pop(0)
                     output = str(x) + ',' + str(y)
-                    print(output)
+                    print("Estimate: " + output)
                     channel_send(channel,output)
+                    
                 else:
                     output = 'pong'
-                    print(output)
                     channel_send(channel,output)
       
     # leave the connection open or close it if necessary.
@@ -110,7 +112,7 @@ def calc_coords(queue,frame):
     frame = frame[10:480,10:640]
     for y in range(frame.shape[0]):
         for x in range(frame.shape[1]):
-            if frame[y,x] > 50:
+            if frame[y,x] == 255:
                 queue.put([x,y])
                 return x,y
     return 0,0
