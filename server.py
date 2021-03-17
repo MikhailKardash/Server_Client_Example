@@ -87,6 +87,8 @@ class CircleVideoStreamTrack(VideoStreamTrack):
 def channel_send(channel, message):
     """
     Send message over specified channel.
+    :param channel: RTCPeerConnection CHANNEL object
+    :param message: String message
     """
     channel.send(message)
 
@@ -120,6 +122,7 @@ async def run_offer(pc, signaling):
         """
         while True:
             channel_send(channel, "ping")
+            print('ping')
             await asyncio.sleep(1)
 
     @channel.on("open")
@@ -144,10 +147,12 @@ async def run_offer(pc, signaling):
                 pass
             else:
                 coords = message.split(',')
-                print(coords)
                 x = int(message[0])
                 y = int(message[1])
+                print(frame)
                 compx, compy = calc_coords(frame)
+                print(compx)
+                print(compy)
                 print('Error: ' + str(np.sqrt((x-compx)**2 + (y-compy)**2)))
                 
 
@@ -183,11 +188,12 @@ def calc_coords(frame):
     Calculate coordinates.
     Make sure that it is consistent with client side
     processing method.
+    :param frame: video frame in numpy format.
     """
     frame = frame[10:480,10:640]
     for y in range(frame.shape[0]):
         for x in range(frame.shape[1]):
-            if frame[y,x] > 50:
+            if frame[y,x] == 255:
                 return x,y
     return 0,0
 
@@ -203,7 +209,7 @@ if __name__ == '__main__':
     pc = RTCPeerConnection()
     
     # create event and run loop
-    event = run_offer(pc,signaling, window_name)
+    event = run_offer(pc,signaling)
     loop = asyncio.get_event_loop()
     try:
         loop.run_until_complete(event)

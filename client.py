@@ -15,14 +15,32 @@ from aiortc.contrib.media import MediaBlackhole, MediaPlayer, MediaRecorder
 from aiortc.contrib.signaling import BYE, add_signaling_arguments, TcpSocketSignaling
 
 def channel_send(channel, message):
+    """
+    Send message over specified channel.
+    :param channel: RTCPeerConnection CHANNEL object
+    :param message: String message
+    """
     channel.send(message)
 
 async def run_answer(pc, signaling, recorder, queue, window):
+    """
+    Function that handles all signaling.
+    Defines reactive behavior when given two types of offers.
+    Chat channel offer: respond with string message
+    Track offer: play video
+    Then, leaves the connection open.
+    """
     processes = []
     rets = []
     await signaling.connect()
     @pc.on("track")
     async def on_track(track):
+        """
+        After receiving track, play the track video and append frames.
+        Take those frames and send them to a process.
+        Also displays current frame using cv2. imshow.
+        :param track: VideoStreamTrack 
+        """
         print("Receiving %s" % track.kind)
         recorder.addTrack(track)
         while True:
@@ -37,6 +55,10 @@ async def run_answer(pc, signaling, recorder, queue, window):
     
     @pc.on("datachannel")
     def on_datachannel(channel):
+        """
+        behavior on receiving a text message.
+        Either send back pong or the image coordinates.
+        """
         @channel.on("message")
         def on_message(message):
             if isinstance(message, str):
@@ -58,7 +80,7 @@ async def run_answer(pc, signaling, recorder, queue, window):
                     print(output)
                     channel_send(channel,output)
       
-    
+    # leave the connection open or close it if necessary.
     while True:
         obj = await signaling.receive()
         
@@ -78,6 +100,13 @@ async def run_answer(pc, signaling, recorder, queue, window):
             
             
 def calc_coords(queue,frame):
+    """
+    Calculate coordinates.
+    Make sure that it is consistent with server side
+    processing method.
+    :param queue: multiprocessing queue.
+    :param frame: video frame in numpy format.
+    """
     frame = frame[10:480,10:640]
     for y in range(frame.shape[0]):
         for x in range(frame.shape[1]):
