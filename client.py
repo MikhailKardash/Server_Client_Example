@@ -18,9 +18,9 @@ def channel_send(channel, message):
     channel.send(message)
 
 async def run_answer(pc, signaling, recorder, queue, window):
+    processes = []
+    rets = []
     await signaling.connect()
-    
-    
     @pc.on("track")
     async def on_track(track):
         print("Receiving %s" % track.kind)
@@ -28,26 +28,36 @@ async def run_answer(pc, signaling, recorder, queue, window):
         while True:
             frame = await track.recv()
             frame = frame.to_ndarray()
-            queue.put(frame)
-            #channel_send(channel, 'got_frame')
-            cv2.imshow(window,frame)
-            cv2.waitKey(1)
-    
-    channel = pc.createDataChannel("chat")
-    
-    @channel.on("open")
-    def on_open():
-        channel_send(channel,'test')
+            process = multiprocessing.Process(target = calc_coords,
+                                              args = (queue,frame))
+            processes.append(process)
+            process.start()
+            cv2.imshow(window,frame[10:480,10:640])
+            cv2.waitKey(50)
     
     @pc.on("datachannel")
     def on_datachannel(channel):
         @channel.on("message")
         def on_message(message):
             if isinstance(message, str):
-                print(message)           
-    
-    #await pc.setLocalDescription(await pc.createAnswer())
-    #await signaling.send(pc.localDescription)    
+                print(message)
+                for p in processes:
+                    ret = queue.get()
+                    rets.append(ret)
+                
+                for p in processes:
+                    p.join()
+                
+                if rets:
+                    x,y = rets.pop(0)
+                    output = str(x) + ',' + str(y)
+                    print(output)
+                    channel_send(channel,output)
+                else:
+                    output = 'pong'
+                    print(output)
+                    channel_send(channel,output)
+      
     
     while True:
         obj = await signaling.receive()
@@ -67,9 +77,14 @@ async def run_answer(pc, signaling, recorder, queue, window):
             break
             
             
-def calc_coords(frame):
-    pass
-
+def calc_coords(queue,frame):
+    frame = frame[10:480,10:640]
+    for y in range(frame.shape[0]):
+        for x in range(frame.shape[1]):
+            if frame[y,x] > 50:
+                queue.put([x,y])
+                return x,y
+    return 0,0
 
 
 if __name__ == '__main__':
@@ -87,13 +102,11 @@ if __name__ == '__main__':
     
     # video window name
     window_name = 'VideoStream'
-    #cv2.imshow(window_name,np.zeros([255,255,3]))
-    #cv2.waitKey(1)
+ 
+    # create multiprocessing queue
+    queue = multiprocessing.Queue(5)
     
-    # create multiprocessing process
-    queue = multiprocessing.Queue()
-    #process = multiprocessing.Process(target = calc_coords, args = (queue,window_name))
-    #process.start()
+    
     
     # create event and run loop
     event = run_answer(pc,signaling, recorder, queue, window_name)
@@ -109,7 +122,4 @@ if __name__ == '__main__':
         loop.run_until_complete(pc.close())
         cv2.destroyAllWindows()
         queue.close()
-        while not queue.empty():
-            queue.get_nowait()
-        
         
