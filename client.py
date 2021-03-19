@@ -116,7 +116,7 @@ def calc_coords(queue,frame):
     """
     
     assert isinstance(frame, np.ndarray)
-    assert isinstance(queue, multiprocessing.Queue)
+    #assert isinstance(queue, multiprocessing.Queue)
     
     # trim off the white video borders
     trim = 25
@@ -162,6 +162,10 @@ if __name__ == '__main__':
     try:
         loop.run_until_complete(event)
     except KeyboardInterrupt:
+        cv2.destroyAllWindows()
+        queue.close()
+        for el in queue():
+            queue.release()
         pass
     finally:
         loop.run_until_complete(recorder.stop())

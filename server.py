@@ -11,6 +11,7 @@ from aiortc import (
     RTCPeerConnection,
     RTCSessionDescription,
     VideoStreamTrack,
+    RTCDataChannel
 )
 from aiortc.contrib.media import MediaBlackhole, MediaPlayer, MediaRecorder
 from aiortc.contrib.signaling import BYE, add_signaling_arguments, TcpSocketSignaling
@@ -91,6 +92,8 @@ def channel_send(channel, message):
     :param channel: RTCPeerConnection CHANNEL object
     :param message: String message
     """
+    assert isinstance(message,str)
+    assert isinstance(channel,RTCDataChannel)
     channel.send(message)
 
 async def run_offer(pc, signaling):
@@ -102,6 +105,9 @@ async def run_offer(pc, signaling):
     Leaves connection open to client, waiting
     for responses.
     """
+    assert isinstance(pc,RTCPeerConnection)
+    assert isinstance(signaling,TcpSocketSignaling)
+    
     
     #create channel and reference stream.
     channel = pc.createDataChannel("chat")
@@ -161,14 +167,16 @@ async def run_offer(pc, signaling):
         if isinstance(message,str):
             if message == 'pong':
                 pass
-            else:
-                print('Coords Received: ' + message)
+            elif ',' in message:
                 coords = message.split(',')
-                x = int(message[0])
-                y = int(message[1])
+                x = int(coords[0])
+                y = int(coords[1])
                 compx, compy = calc_coords(count)
+                print('Coords Received: ' + message)
                 print('Coords Server: ' + str(compx) + ',' + str(compy))
                 print('Error: ' + str(np.sqrt((x-compx)**2 + (y-compy)**2)))
+            else:
+                pass
                 
 
     # send offer  
