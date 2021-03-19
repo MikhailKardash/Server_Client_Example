@@ -4,7 +4,6 @@ from av import VideoFrame
 import cv2
 import datetime
 import multiprocessing
-import pytest
 
 from aiortc import (
     RTCIceCandidate,
