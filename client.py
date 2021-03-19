@@ -3,6 +3,7 @@ import asyncio
 import cv2
 import multiprocessing
 
+
 from av import VideoFrame
 
 from aiortc import (
@@ -24,6 +25,7 @@ def channel_send(channel, message):
     :param channel: RTCPeerConnection CHANNEL object
     :param message: String message
     """
+    assert isinstance(message,str)
     channel.send(message)
 
 async def run_answer(pc, signaling, recorder, queue, window):
@@ -104,18 +106,32 @@ async def run_answer(pc, signaling, recorder, queue, window):
 def calc_coords(queue,frame):
     """
     Calculate coordinates.
-    Make sure that it is consistent with server side
-    processing method.
+    Image needs to be trimmed because of noisy video.
+    Then, argmax both rows and columns to get furthermost points
+    of the circle.
+    
+    
     :param queue: multiprocessing queue.
     :param frame: video frame in numpy format.
     """
-    frame = frame[10:480,10:640]
-    for y in range(frame.shape[0]):
-        for x in range(frame.shape[1]):
-            if frame[y,x] == 255:
-                queue.put([x,y])
-                return x,y
-    return 0,0
+    
+    assert isinstance(frame, np.ndarray)
+    assert isinstance(queue, multiprocessing.Queue)
+    
+    # trim off the white video borders
+    trim = 25
+    frame = frame[trim:480-trim,trim:640-trim]
+    
+    #argmax the rows and columns.
+    maxx = np.argmax(frame, axis = 0)
+    maxy = np.argmax(frame, axis = 1)
+    
+    # take the cornermost indices.
+    x = np.max(maxx)
+    y = np.max(maxy)
+    
+    #throw these indices onto the queue and add trim to keep it zero based.
+    queue.put([x + trim, y + trim])
 
 
 if __name__ == '__main__':
