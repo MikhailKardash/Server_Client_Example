@@ -59,6 +59,12 @@ def test_channel_send():
         
 @pytest.mark.asyncio
 async def test_run_offer():
+    '''
+    Test run offer for input typing.
+    There are a lot of internal functions that should
+    be tested after completely restructuring the server
+    and client code.
+    '''
     pc_valid = RTCPeerConnection()
     signaling_valid = TcpSocketSignaling(host = "0.0.0.0", port = "8080")
     try:

@@ -11,6 +11,7 @@ from aiortc import (
     RTCPeerConnection,
     RTCSessionDescription,
     VideoStreamTrack,
+    RTCDataChannel
 )
 from aiortc.contrib.media import MediaBlackhole, MediaPlayer, MediaRecorder
 from aiortc.contrib.signaling import BYE, add_signaling_arguments, TcpSocketSignaling
@@ -26,6 +27,7 @@ def channel_send(channel, message):
     :param message: String message
     """
     assert isinstance(message,str)
+    assert isinstance(channel,RTCDataChannel)
     channel.send(message)
 
 async def run_answer(pc, signaling, recorder, queue, window):
@@ -36,6 +38,12 @@ async def run_answer(pc, signaling, recorder, queue, window):
     Track offer: play video
     Then, leaves the connection open.
     """
+    
+    assert isinstance(pc,RTCPeerConnection)
+    assert isinstance(signaling,TcpSocketSignaling)
+    assert isinstance(recorder,MediaBlackhole)
+    assert isinstance(queue,multiprocessing.queues.Queue)
+    assert isinstance(window,str)
 
     await signaling.connect()
     @pc.on("track")
@@ -110,13 +118,15 @@ def calc_coords(queue,frame):
     Then, argmax both rows and columns to get furthermost points
     of the circle.
     
+    Note that this approach works for shapes with outermost points
+    that align with their centers, such as circles, pluses, and rhombi.
     
     :param queue: multiprocessing queue.
     :param frame: video frame in numpy format.
     """
     
     assert isinstance(frame, np.ndarray)
-    #assert isinstance(queue, multiprocessing.Queue)
+    assert isinstance(queue, multiprocessing.queues.Queue)
     
     # trim off the white video borders
     trim = 25
@@ -126,9 +136,10 @@ def calc_coords(queue,frame):
     maxx = np.argmax(frame, axis = 0)
     maxy = np.argmax(frame, axis = 1)
     
+    
     # take the cornermost indices.
-    x = np.max(maxx)
     y = np.max(maxy)
+    x = np.max(maxx)
     
     #throw these indices onto the queue and add trim to keep it zero based.
     queue.put([x + trim, y + trim])
